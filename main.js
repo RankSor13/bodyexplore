@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 /* =========================================================
-   ANATOMICA — clinical interactive 3D body atlas
-   Click specimen -> explode -> select structure -> inspect
-   Layer toggles control Skeletal / Organs / Surface
+   ANATOMICA — clinical interactive 3D body atlas (v2)
+   Proper upright mannequin: head/torso/arms/legs as a real
+   silhouette, organs nested inside, layer toggles for
+   Skeletal / Organs / Surface (muscle shell)
    ========================================================= */
 
 // ---------- Organ data ----------
@@ -91,10 +92,10 @@ const LAYER_OF = {
 const app = document.getElementById('app');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xeef1f4);
-scene.fog = new THREE.Fog(0xeef1f4, 16, 32);
+scene.fog = new THREE.Fog(0xeef1f4, 18, 36);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
-const HOME_CAM = new THREE.Vector3(0, 1.2, 9);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+const HOME_CAM = new THREE.Vector3(0, 1.1, 10.5);
 camera.position.copy(HOME_CAM);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -108,25 +109,26 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 4;
-controls.maxDistance = 20;
-controls.target.set(0, 0.6, 0);
+controls.maxDistance = 22;
+controls.target.set(0, 0.8, 0);
+controls.maxPolarAngle = Math.PI * 0.92;
 
 // ---------- Lights ----------
-scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-const key = new THREE.DirectionalLight(0xffffff, 1.6);
-key.position.set(5, 9, 7); key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.near = 1; key.shadow.camera.far = 40;
-scene.add(key);
-const rim = new THREE.DirectionalLight(0x0d7a6e, 0.5); rim.position.set(-6, 3, -6); scene.add(rim);
-const fill = new THREE.PointLight(0xc0392b, 0.4, 30); fill.position.set(0, 2, 6); scene.add(fill);
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.7);
+keyLight.position.set(5, 10, 7); keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 40;
+scene.add(keyLight);
+const rim = new THREE.DirectionalLight(0x0d7a6e, 0.45); rim.position.set(-6, 3, -6); scene.add(rim);
+const fill = new THREE.PointLight(0xc0392b, 0.35, 30); fill.position.set(0, 2, 6); scene.add(fill);
 
 // grid floor — clinical lab plinth
 const floor = new THREE.Mesh(
   new THREE.CircleGeometry(8, 64),
   new THREE.MeshStandardMaterial({ color: 0xdfe5ea, roughness: 0.95, metalness: 0.02 })
 );
-floor.rotation.x = -Math.PI / 2; floor.position.y = -3.4; floor.receiveShadow = true;
+floor.rotation.x = -Math.PI / 2; floor.position.y = -3.6; floor.receiveShadow = true;
 scene.add(floor);
 
 const ringMat = new THREE.LineBasicMaterial({ color: 0xc7d0d8, transparent: true, opacity: 0.7 });
@@ -134,47 +136,88 @@ const ringMat = new THREE.LineBasicMaterial({ color: 0xc7d0d8, transparent: true
   const ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
     new THREE.EllipseCurve(0, 0, r, r, 0, Math.PI * 2).getPoints(96).map(p => new THREE.Vector3(p.x, 0, p.y))
   ), ringMat);
-  ring.position.y = -3.39;
+  ring.position.y = -3.59;
   scene.add(ring);
 });
 
-// ---------- Build the body ----------
+// ---------- Build the figure ----------
 const bodyGroup = new THREE.Group();
 scene.add(bodyGroup);
 
-const organMeshes = [];   // clickable organs
-const bodyParts = [];     // the outer "skin" silhouette pieces (Surface layer)
-const skeletonMeshes = []; // skeleton pieces (Skeletal layer, separate from organMeshes scaling)
+const organMeshes = [];    // clickable organs (Organs layer)
+const surfaceMeshes = [];  // muscle/skin shell (Surface layer)
+const skeletonMeshes = []; // skeleton pieces (Skeletal layer)
 
-const skin = new THREE.MeshStandardMaterial({
-  color: 0x6fa8ff, transparent: true, opacity: 0.14, roughness: 0.3,
-  metalness: 0.1, side: THREE.DoubleSide, depthWrite: false
+// Surface = warm "muscle body" shell, semi-opaque, Zygote-style reddish tone
+const surfaceMat = new THREE.MeshStandardMaterial({
+  color: 0xd98c7a, roughness: 0.55, metalness: 0.04,
+  transparent: true, opacity: 0.92, depthWrite: true
 });
 
-function addSkin(mesh) { mesh.userData.isSkin = true; bodyParts.push(mesh); bodyGroup.add(mesh); }
+function addSurface(mesh) {
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData.isSurface = true;
+  surfaceMeshes.push(mesh);
+  bodyGroup.add(mesh);
+  return mesh;
+}
 
-// head
-addSkin((() => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.62, 32, 32), skin.clone()); m.position.set(0, 2.55, 0); return m; })());
-// neck
-addSkin((() => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.4, 24), skin.clone()); m.position.set(0, 2.0, 0); return m; })());
-// torso
-addSkin((() => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.85, 1.4, 12, 24), skin.clone()); m.position.set(0, 0.95, 0); return m; })());
-// hips
-addSkin((() => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.8, 24, 24), skin.clone()); m.position.set(0, -0.15, 0); return m; })());
-// arms
-[-1.05, 1.05].forEach(x => {
-  const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.7, 8, 16), skin.clone());
-  arm.position.set(x, 0.9, 0); arm.rotation.z = x > 0 ? 0.18 : -0.18;
-  addSkin(arm);
-});
-// legs
-[-0.42, 0.42].forEach(x => {
-  const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 2.1, 8, 16), skin.clone());
-  leg.position.set(x, -1.9, 0);
-  addSkin(leg);
+// ----- Proportions (head at top, y increases upward) -----
+// Head ~0.95 units tall centered at y=2.7
+const headGeo = new THREE.SphereGeometry(0.5, 32, 32);
+const head = addSurface(new THREE.Mesh(headGeo, surfaceMat.clone()));
+head.position.set(0, 2.75, 0);
+head.scale.set(0.92, 1.08, 0.95);
+
+// Neck
+const neck = addSurface(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.35, 20), surfaceMat.clone()));
+neck.position.set(0, 2.18, 0);
+
+// Shoulders / upper torso (wider capsule)
+const torsoUpper = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.78, 0.9, 12, 20), surfaceMat.clone()));
+torsoUpper.position.set(0, 1.35, 0);
+torsoUpper.scale.set(1.0, 1.0, 0.78);
+
+// Lower torso / abdomen (narrower)
+const torsoLower = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 0.7, 12, 20), surfaceMat.clone()));
+torsoLower.position.set(0, 0.35, 0);
+torsoLower.scale.set(1.0, 1.0, 0.75);
+
+// Hips / pelvis
+const hips = addSurface(new THREE.Mesh(new THREE.SphereGeometry(0.66, 24, 24), surfaceMat.clone()));
+hips.position.set(0, -0.45, 0);
+hips.scale.set(1.05, 0.85, 0.85);
+
+// Arms — upper arm + forearm, each side
+[-1, 1].forEach(side => {
+  const shoulderX = 0.95 * side;
+  const upperArm = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.95, 8, 16), surfaceMat.clone()));
+  upperArm.position.set(shoulderX, 1.25, 0);
+  upperArm.rotation.z = side * 0.12;
+
+  const forearm = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.135, 0.95, 8, 16), surfaceMat.clone()));
+  forearm.position.set(shoulderX * 1.05, 0.25, 0.05);
+  forearm.rotation.z = side * 0.06;
+
+  const hand = addSurface(new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 16), surfaceMat.clone()));
+  hand.position.set(shoulderX * 1.08, -0.45, 0.07);
+  hand.scale.set(0.8, 1.3, 0.6);
 });
 
-// helper to create an organ
+// Legs — thigh + shin, each side
+[-1, 1].forEach(side => {
+  const hipX = 0.32 * side;
+  const thigh = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 1.15, 8, 16), surfaceMat.clone()));
+  thigh.position.set(hipX, -1.55, 0);
+
+  const shin = addSurface(new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.1, 8, 16), surfaceMat.clone()));
+  shin.position.set(hipX, -2.85, 0.05);
+
+  const foot = addSurface(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.55), surfaceMat.clone()));
+  foot.position.set(hipX, -3.55, 0.18);
+});
+
+// ---------- Helper to create an organ ----------
 function makeOrgan(key, geo, pos, scale = 1) {
   const data = ORGANS[key];
   const mat = new THREE.MeshStandardMaterial({
@@ -183,13 +226,18 @@ function makeOrgan(key, geo, pos, scale = 1) {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(pos[0], pos[1], pos[2]);
-  mesh.scale.setScalar(scale);
+  if (Array.isArray(scale)) mesh.scale.set(scale[0], scale[1], scale[2]);
+  else mesh.scale.setScalar(scale);
   mesh.castShadow = true;
   mesh.userData.organKey = key;
   mesh.userData.homePos = mesh.position.clone();
-  // explode target = direction outward from body center
-  const dir = new THREE.Vector3(pos[0], pos[1] - 0.6, pos[2]).normalize();
-  mesh.userData.explodePos = mesh.position.clone().add(dir.multiplyScalar(3.2 + Math.random() * 1.2));
+  // explode target = outward radial direction from torso centerline, preserving height
+  const radial = new THREE.Vector3(pos[0], 0, pos[2]);
+  if (radial.lengthSq() < 0.0001) radial.set((Math.random() - 0.5), 0, 1);
+  radial.normalize();
+  const explodeDir = radial.clone().multiplyScalar(2.6 + Math.random() * 1.0);
+  explodeDir.y += (Math.random() - 0.5) * 0.6;
+  mesh.userData.explodePos = mesh.position.clone().add(explodeDir);
   mesh.userData.baseEmissive = 0.08;
   organMeshes.push(mesh);
   bodyGroup.add(mesh);
@@ -197,24 +245,24 @@ function makeOrgan(key, geo, pos, scale = 1) {
   return mesh;
 }
 
-// Brain
-makeOrgan('brain', new THREE.IcosahedronGeometry(0.42, 2), [0, 2.62, 0]);
-// Heart
-makeOrgan('heart', new THREE.SphereGeometry(0.3, 24, 24), [-0.18, 1.35, 0.15], 1);
-// Lungs
-makeOrgan('lungLeft', new THREE.CapsuleGeometry(0.26, 0.5, 8, 16), [0.42, 1.4, 0]);
-makeOrgan('lungRight', new THREE.CapsuleGeometry(0.26, 0.5, 8, 16), [-0.5, 1.4, 0]);
-// Liver
-makeOrgan('liver', new THREE.BoxGeometry(0.7, 0.4, 0.45), [-0.28, 0.75, 0.15]);
-// Stomach
-makeOrgan('stomach', new THREE.SphereGeometry(0.3, 20, 20), [0.28, 0.7, 0.15], 1);
-// Kidneys
-makeOrgan('kidneyLeft', new THREE.CapsuleGeometry(0.13, 0.22, 6, 12), [0.35, 0.35, -0.2]);
-makeOrgan('kidneyRight', new THREE.CapsuleGeometry(0.13, 0.22, 6, 12), [-0.35, 0.3, -0.2]);
-// Intestines
-makeOrgan('intestine', new THREE.TorusKnotGeometry(0.32, 0.12, 80, 12), [0, 0.15, 0.1]);
-// Skeleton (represented as a spine column)
-makeOrgan('skeleton', new THREE.CylinderGeometry(0.1, 0.1, 2.2, 12), [0, 0.9, -0.35]);
+// Brain — inside the head
+makeOrgan('brain', new THREE.IcosahedronGeometry(0.36, 2), [0, 2.82, -0.02]);
+// Heart — upper-left chest
+makeOrgan('heart', new THREE.SphereGeometry(0.24, 24, 24), [-0.18, 1.55, 0.1]);
+// Lungs — either side of heart
+makeOrgan('lungLeft', new THREE.CapsuleGeometry(0.2, 0.5, 8, 16), [0.38, 1.55, 0]);
+makeOrgan('lungRight', new THREE.CapsuleGeometry(0.2, 0.5, 8, 16), [-0.46, 1.55, 0]);
+// Liver — upper right abdomen
+makeOrgan('liver', new THREE.BoxGeometry(0.55, 0.32, 0.35), [-0.26, 0.85, 0.08]);
+// Stomach — upper left abdomen
+makeOrgan('stomach', new THREE.SphereGeometry(0.24, 20, 20), [0.24, 0.8, 0.08], 1);
+// Kidneys — back of abdomen
+makeOrgan('kidneyLeft', new THREE.CapsuleGeometry(0.1, 0.2, 6, 12), [0.32, 0.5, -0.18]);
+makeOrgan('kidneyRight', new THREE.CapsuleGeometry(0.1, 0.2, 6, 12), [-0.32, 0.45, -0.18]);
+// Intestines — lower abdomen / pelvis
+makeOrgan('intestine', new THREE.TorusKnotGeometry(0.26, 0.09, 80, 12), [0, 0.05, 0.08]);
+// Skeleton — central spine column running through the torso
+makeOrgan('skeleton', new THREE.CylinderGeometry(0.08, 0.08, 2.6, 12), [0, 1.0, -0.28], [1, 1, 1]);
 
 {
   const sk = organMeshes.find(m => m.userData.organKey === 'skeleton');
@@ -230,7 +278,7 @@ function applyLayerVisibility() {
     const layer = LAYER_OF[m.userData.organKey];
     m.visible = layerState[layer];
   });
-  bodyParts.forEach(p => { p.visible = layerState.surface; });
+  surfaceMeshes.forEach(p => { p.visible = layerState.surface; });
   const activeCount = Object.values(layerState).filter(Boolean).length;
   document.getElementById('layerCount').textContent = activeCount;
 }
@@ -301,19 +349,15 @@ function updatePointer(e) {
   pointer.y = -(t.clientY / innerHeight) * 2 + 1;
 }
 
-function visibleOrgans() {
-  return organMeshes.filter(m => m.visible);
-}
-function visibleBodyParts() {
-  return bodyParts.filter(p => p.visible);
-}
+function visibleOrgans() { return organMeshes.filter(m => m.visible); }
+function visibleSurface() { return surfaceMeshes.filter(p => p.visible); }
 
 function onClick(e) {
   updatePointer(e);
   raycaster.setFromCamera(pointer, camera);
 
   if (!exploded) {
-    const hits = raycaster.intersectObjects([...visibleBodyParts(), ...visibleOrgans()], false);
+    const hits = raycaster.intersectObjects([...visibleSurface(), ...visibleOrgans()], false);
     if (hits.length) setExplode(true);
     return;
   }
@@ -330,7 +374,7 @@ renderer.domElement.addEventListener('click', onClick);
 renderer.domElement.addEventListener('pointermove', (e) => {
   updatePointer(e);
   raycaster.setFromCamera(pointer, camera);
-  const targets = exploded ? visibleOrgans() : [...visibleBodyParts(), ...visibleOrgans()];
+  const targets = exploded ? visibleOrgans() : [...visibleSurface(), ...visibleOrgans()];
   const hits = raycaster.intersectObjects(targets, false);
   const obj = hits.length ? hits[0].object : null;
   renderer.domElement.style.cursor = obj ? 'pointer' : 'grab';
@@ -345,7 +389,7 @@ ui.rotate.addEventListener('click', () => {
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
   camTween = { from: camera.position.clone(), to: HOME_CAM.clone(), t: 0 };
-  controls.target.set(0, 0.6, 0);
+  controls.target.set(0, 0.8, 0);
   ui.info.classList.remove('open');
 });
 document.getElementById('closeInfo').addEventListener('click', () => ui.info.classList.remove('open'));
@@ -370,13 +414,15 @@ function animate() {
     }
     const targetEmissive = (hovered === m) ? 0.5 : m.userData.baseEmissive;
     m.material.emissiveIntensity += (targetEmissive - m.material.emissiveIntensity) * 0.15;
-    const targetScale = (hovered === m ? 1.12 : 1) * (m.userData.bounce ? 1.2 : 1);
-    m.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.2);
+    const targetScaleMul = (hovered === m ? 1.12 : 1) * (m.userData.bounce ? 1.2 : 1);
+    const baseScale = m.userData.baseScale || (m.userData.baseScale = m.scale.clone());
+    m.scale.lerp(baseScale.clone().multiplyScalar(targetScaleMul), 0.2);
     if (m.userData.bounce) m.userData.bounce = 0;
   });
 
-  bodyParts.forEach(p => {
-    const targetOp = exploded ? 0.02 : 0.14;
+  // surface shell fades when exploded so organs are visible
+  surfaceMeshes.forEach(p => {
+    const targetOp = exploded ? 0.06 : 0.92;
     p.material.opacity += (targetOp - p.material.opacity) * 0.08;
   });
 
