@@ -3,136 +3,255 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Body Explorer — Interactive 3D Human Anatomy</title>
-  <meta name="description" content="An interactive 3D educational website. Click the human body to explode it into organs, then click each organ to learn its name and what it does." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <title>ANATOMICA — Interactive 3D Body Atlas</title>
+  <meta name="description" content="A clinical-grade interactive 3D anatomy atlas. Toggle systems, click structures, and explode the body to study each organ." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>" />
   <style>
     :root {
-      --accent: #ff5b6e;
-      --accent2: #4fc3f7;
-      --panel: rgba(12, 16, 28, 0.82);
+      --bg: #eef1f4;
+      --bg2: #dde3e9;
+      --panel: rgba(255,255,255,0.92);
+      --ink: #1c2733;
+      --ink-soft: #5b6b7a;
+      --line: #c7d0d8;
+      --accent: #0d7a6e;     /* clinical teal */
+      --accent2: #c0392b;    /* anatomical red */
+      --accent-soft: #e7f3f1;
+      --mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+      --sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; background: #05070f; font-family: 'Segoe UI', system-ui, sans-serif; color: #e9eefb; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--ink);
+      background-image:
+        linear-gradient(rgba(0,0,0,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,.025) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
     #app { position: fixed; inset: 0; }
     canvas { display: block; }
 
-    /* ---------- Header ---------- */
+    /* ---------- Top bar ---------- */
     header {
       position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      padding: 16px 22px; pointer-events: none;
-      background: linear-gradient(180deg, rgba(5,7,15,0.85), rgba(5,7,15,0));
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 22px; pointer-events: none;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel); backdrop-filter: blur(6px);
     }
-    header h1 {
-      font-size: clamp(18px, 3vw, 26px); font-weight: 800; letter-spacing: .5px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text; background-clip: text; color: transparent;
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand .mark {
+      width: 34px; height: 34px; border: 2px solid var(--ink); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+      background: var(--accent-soft);
     }
-    header p { font-size: 13px; opacity: .7; margin-top: 2px; }
+    .brand h1 {
+      font-size: 16px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase;
+    }
+    .brand p {
+      font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft);
+      letter-spacing: 1px; margin-top: 2px;
+    }
+    .crosshair-id {
+      font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+      text-align: right; letter-spacing: 1px;
+    }
+    .crosshair-id b { color: var(--accent2); }
+    @media (max-width: 640px) { .crosshair-id, .brand p { display: none; } }
+
+    /* ---------- Layer panel (left) ---------- */
+    #layers {
+      position: fixed; top: 70px; left: 18px; z-index: 11; width: 200px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+      pointer-events: auto; box-shadow: 0 6px 24px rgba(20,30,40,.08);
+    }
+    #layers .lp-head {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase;
+      padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--ink-soft);
+      display: flex; justify-content: space-between;
+    }
+    .layer-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 12px; font-size: 13px; cursor: pointer; user-select: none;
+      border-bottom: 1px solid var(--line);
+    }
+    .layer-row:last-child { border-bottom: none; }
+    .layer-row:hover { background: var(--accent-soft); }
+    .layer-row .dot {
+      width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; flex: none;
+      border: 1px solid rgba(0,0,0,.15);
+    }
+    .layer-row .name { flex: 1; }
+    .layer-row .count { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); }
+    .layer-row.off { opacity: .35; }
+    .layer-row.off .name { text-decoration: line-through; }
+
+    /* ---------- Controls (right) ---------- */
+    #controls {
+      position: fixed; top: 70px; right: 18px; z-index: 11;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: auto;
+    }
+    .btn {
+      cursor: pointer; user-select: none;
+      background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+      border-radius: 4px; padding: 9px 13px; font-size: 12px; font-weight: 700;
+      font-family: var(--mono); letter-spacing: 1px; text-transform: uppercase;
+      transition: .15s; display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 4px 14px rgba(20,30,40,.06);
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* ---------- Hint ---------- */
     #hint {
-      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
-      z-index: 10; background: var(--panel); backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,.12); border-radius: 999px;
-      padding: 10px 20px; font-size: 14px; display: flex; align-items: center; gap: 10px;
-      animation: pulse 2.4s ease-in-out infinite; box-shadow: 0 8px 30px rgba(0,0,0,.4);
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 10; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 4px; padding: 9px 18px; font-size: 12.5px; font-family: var(--mono);
+      display: flex; align-items: center; gap: 10px; letter-spacing: .5px;
+      box-shadow: 0 6px 20px rgba(20,30,40,.08); pointer-events: none;
     }
-    @keyframes pulse { 0%,100%{opacity:.85} 50%{opacity:1; transform:translateX(-50%) scale(1.03)} }
     #hint b { color: var(--accent2); }
 
-    /* ---------- Controls ---------- */
-    #controls {
-      position: fixed; top: 18px; right: 18px; z-index: 11; display: flex; flex-direction: column; gap: 8px;
+    /* ---------- Crosshair reticle ---------- */
+    #reticle {
+      position: fixed; top: 50%; left: 50%; width: 26px; height: 26px;
+      transform: translate(-50%,-50%); pointer-events: none; z-index: 9; opacity: .35;
     }
-    .btn {
-      pointer-events: auto; cursor: pointer; user-select: none;
-      background: var(--panel); backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,.14); color: #e9eefb;
-      border-radius: 12px; padding: 9px 14px; font-size: 13px; font-weight: 600;
-      transition: .18s; display: flex; align-items: center; gap: 8px;
-    }
-    .btn:hover { border-color: var(--accent2); transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
+    #reticle svg { width: 100%; height: 100%; }
+    #reticle line, #reticle circle { stroke: var(--ink-soft); stroke-width: 1; fill: none; }
 
     /* ---------- Info Panel ---------- */
     #info {
-      position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 86vw); z-index: 20;
-      background: var(--panel); backdrop-filter: blur(16px);
-      border-left: 1px solid rgba(255,255,255,.12);
-      transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.8,.2,1);
-      padding: 26px 24px; overflow-y: auto; box-shadow: -12px 0 40px rgba(0,0,0,.45);
+      position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 90vw); z-index: 20;
+      background: var(--panel); border-left: 1px solid var(--line);
+      transform: translateX(105%); transition: transform .4s cubic-bezier(.2,.8,.2,1);
+      padding: 26px 26px 40px; overflow-y: auto; box-shadow: -14px 0 40px rgba(20,30,40,.12);
+      font-family: var(--sans);
     }
     #info.open { transform: translateX(0); }
     #info .close {
-      position: absolute; top: 16px; right: 16px; cursor: pointer; font-size: 22px;
-      width: 36px; height: 36px; line-height: 34px; text-align: center; border-radius: 50%;
-      background: rgba(255,255,255,.08); transition: .15s;
+      position: absolute; top: 14px; right: 14px; cursor: pointer; font-size: 18px;
+      width: 32px; height: 32px; line-height: 30px; text-align: center; border-radius: 2px;
+      border: 1px solid var(--line); transition: .15s; font-family: var(--mono);
     }
-    #info .close:hover { background: var(--accent); }
-    #info .emoji { font-size: 46px; }
-    #info h2 { font-size: 26px; margin: 8px 0 2px; }
+    #info .close:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+    #info .specimen-id {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: 2px; color: var(--ink-soft);
+      text-transform: uppercase; margin-bottom: 14px;
+    }
+    #info .specimen-id b { color: var(--accent2); }
+    #info h2 {
+      font-size: 28px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.5px;
+    }
     #info .tag {
-      display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-      padding: 4px 10px; border-radius: 999px; margin-bottom: 16px; font-weight: 700;
+      display: inline-block; font-family: var(--mono); font-size: 10.5px; text-transform: uppercase;
+      letter-spacing: 2px; padding: 4px 10px; border-radius: 2px; margin-bottom: 16px; font-weight: 700;
+      border: 1px solid currentColor;
     }
     #info h3 {
-      font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: .6;
-      margin: 20px 0 8px; border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: 6px;
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--ink-soft); margin: 22px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
     }
-    #info p { font-size: 15px; line-height: 1.6; opacity: .92; }
+    #info p { font-size: 14.5px; line-height: 1.65; color: var(--ink); }
     #info ul { list-style: none; margin-top: 6px; }
-    #info li { font-size: 14.5px; line-height: 1.5; padding: 7px 0 7px 26px; position: relative; }
-    #info li::before { content: "✔"; position: absolute; left: 0; color: var(--accent2); }
-    #info .fact {
-      margin-top: 22px; background: rgba(79,195,247,.1); border: 1px solid rgba(79,195,247,.25);
-      border-radius: 14px; padding: 14px 16px; font-size: 14px; line-height: 1.55;
+    #info li {
+      font-size: 13.5px; line-height: 1.55; padding: 8px 0 8px 22px; position: relative;
+      border-bottom: 1px dashed var(--line); font-family: var(--sans);
     }
-    #info .fact b { color: var(--accent2); }
+    #info li:last-child { border-bottom: none; }
+    #info li::before {
+      content: "+"; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); font-weight: 800;
+    }
+    #info .fact {
+      margin-top: 22px; background: var(--accent-soft); border: 1px solid var(--accent);
+      border-radius: 4px; padding: 14px 16px; font-size: 13.5px; line-height: 1.6;
+    }
+    #info .fact .lbl {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--accent); display: block; margin-bottom: 6px; font-weight: 800;
+    }
+    #info .stat-row {
+      display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px;
+      color: var(--ink-soft); padding: 6px 0; border-bottom: 1px dashed var(--line);
+    }
+    #info .stat-row:last-child { border-bottom: none; }
+    #info .stat-row b { color: var(--ink); font-weight: 700; }
 
     /* ---------- Loading ---------- */
     #loader {
       position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-      flex-direction: column; gap: 18px; background: #05070f; transition: opacity .6s; font-size: 15px;
+      flex-direction: column; gap: 18px; background: var(--bg); transition: opacity .6s;
+      font-family: var(--mono); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-soft);
     }
     #loader.hide { opacity: 0; pointer-events: none; }
     .spinner {
-      width: 54px; height: 54px; border: 4px solid rgba(255,255,255,.12);
-      border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+      width: 46px; height: 46px; border: 3px solid var(--line);
+      border-top-color: var(--accent2); border-radius: 50%; animation: spin .9s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 600px) { header p { display:none; } }
+
+    @media (max-width: 640px) {
+      #layers { width: 170px; }
+      #controls .btn span { display: none; }
+      #controls .btn { padding: 9px 11px; }
+    }
   </style>
 </head>
 <body>
   <div id="app"></div>
 
   <header>
-    <h1>🧠 Body Explorer</h1>
-    <p>Interactive 3D anatomy — click to explore the human body</p>
+    <div class="brand">
+      <div class="mark">⊕</div>
+      <div>
+        <h1>Anatomica</h1>
+        <p>Interactive Body Atlas — Specimen 01</p>
+      </div>
+    </div>
+    <div class="crosshair-id">
+      VIEW: <b id="viewMode">INTACT</b><br/>
+      LAYERS: <span id="layerCount">3</span> ACTIVE
+    </div>
   </header>
 
-  <div id="controls">
-    <div class="btn" id="toggleBtn">💥 <span>Explode</span></div>
-    <div class="btn" id="rotateBtn">🔄 <span>Auto-Rotate</span></div>
-    <div class="btn" id="resetBtn">♻️ <span>Reset View</span></div>
+  <div id="layers">
+    <div class="lp-head"><span>Systems</span><span>Toggle</span></div>
+    <div class="layer-row" data-layer="skeletal"><span class="dot" style="background:#eae6da"></span><span class="name">Skeletal</span><span class="count">01</span></div>
+    <div class="layer-row" data-layer="organs"><span class="dot" style="background:#c0392b"></span><span class="name">Organs</span><span class="count">09</span></div>
+    <div class="layer-row" data-layer="surface"><span class="dot" style="background:#6fa8ff"></span><span class="name">Surface</span><span class="count">06</span></div>
   </div>
 
-  <div id="hint"><span>👆</span> Click the <b>body</b> to explode it, then click any <b>organ</b> to learn!</div>
+  <div id="controls">
+    <div class="btn" id="toggleBtn">⚙ <span>Explode</span></div>
+    <div class="btn" id="rotateBtn">↻ <span>Auto-Rotate</span></div>
+    <div class="btn" id="resetBtn">⌂ <span>Reset View</span></div>
+  </div>
+
+  <div id="reticle">
+    <svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="9"/><line x1="13" y1="0" x2="13" y2="6"/><line x1="13" y1="20" x2="13" y2="26"/><line x1="0" y1="13" x2="6" y2="13"/><line x1="20" y1="13" x2="26" y2="13"/></svg>
+  </div>
+
+  <div id="hint"><span>＋</span> Click the <b>specimen</b> to explode, then select any <b>structure</b> to inspect</div>
 
   <aside id="info">
     <div class="close" id="closeInfo">✕</div>
-    <div class="emoji" id="iEmoji">🫀</div>
+    <div class="specimen-id">Specimen <b id="iSysCode">SYS-00</b> / Structure <b id="iCode">000</b></div>
     <h2 id="iName">Organ</h2>
     <span class="tag" id="iTag">System</span>
-    <h3>What it is</h3>
+    <h3>Identification</h3>
     <p id="iDesc"></p>
-    <h3>What it does</h3>
+    <h3>Function</h3>
     <ul id="iUses"></ul>
-    <div class="fact"><b>💡 Fun fact:</b> <span id="iFact"></span></div>
+    <h3>Reference Data</h3>
+    <div id="iStats"></div>
+    <div class="fact"><span class="lbl">Field Note</span><span id="iFact"></span></div>
   </aside>
 
-  <div id="loader"><div class="spinner"></div><div>Building the human body…</div></div>
+  <div id="loader"><div class="spinner"></div><div>Calibrating atlas — loading specimen…</div></div>
 
   <script type="importmap">
   {
