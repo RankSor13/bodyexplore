@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Body Explorer — Interactive 3D Human Anatomy</title>
+  <meta name="description" content="An interactive 3D educational website. Click the human body to explode it into organs, then click each organ to learn its name and what it does." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <style>
+    :root {
+      --accent: #ff5b6e;
+      --accent2: #4fc3f7;
+      --panel: rgba(12, 16, 28, 0.82);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: #05070f; font-family: 'Segoe UI', system-ui, sans-serif; color: #e9eefb; }
+    #app { position: fixed; inset: 0; }
+    canvas { display: block; }
+
+    /* ---------- Header ---------- */
+    header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      padding: 16px 22px; pointer-events: none;
+      background: linear-gradient(180deg, rgba(5,7,15,0.85), rgba(5,7,15,0));
+    }
+    header h1 {
+      font-size: clamp(18px, 3vw, 26px); font-weight: 800; letter-spacing: .5px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header p { font-size: 13px; opacity: .7; margin-top: 2px; }
+
+    /* ---------- Hint ---------- */
+    #hint {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      z-index: 10; background: var(--panel); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.12); border-radius: 999px;
+      padding: 10px 20px; font-size: 14px; display: flex; align-items: center; gap: 10px;
+      animation: pulse 2.4s ease-in-out infinite; box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    }
+    @keyframes pulse { 0%,100%{opacity:.85} 50%{opacity:1; transform:translateX(-50%) scale(1.03)} }
+    #hint b { color: var(--accent2); }
+
+    /* ---------- Controls ---------- */
+    #controls {
+      position: fixed; top: 18px; right: 18px; z-index: 11; display: flex; flex-direction: column; gap: 8px;
+    }
+    .btn {
+      pointer-events: auto; cursor: pointer; user-select: none;
+      background: var(--panel); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.14); color: #e9eefb;
+      border-radius: 12px; padding: 9px 14px; font-size: 13px; font-weight: 600;
+      transition: .18s; display: flex; align-items: center; gap: 8px;
+    }
+    .btn:hover { border-color: var(--accent2); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    /* ---------- Info Panel ---------- */
+    #info {
+      position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 86vw); z-index: 20;
+      background: var(--panel); backdrop-filter: blur(16px);
+      border-left: 1px solid rgba(255,255,255,.12);
+      transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.8,.2,1);
+      padding: 26px 24px; overflow-y: auto; box-shadow: -12px 0 40px rgba(0,0,0,.45);
+    }
+    #info.open { transform: translateX(0); }
+    #info .close {
+      position: absolute; top: 16px; right: 16px; cursor: pointer; font-size: 22px;
+      width: 36px; height: 36px; line-height: 34px; text-align: center; border-radius: 50%;
+      background: rgba(255,255,255,.08); transition: .15s;
+    }
+    #info .close:hover { background: var(--accent); }
+    #info .emoji { font-size: 46px; }
+    #info h2 { font-size: 26px; margin: 8px 0 2px; }
+    #info .tag {
+      display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      padding: 4px 10px; border-radius: 999px; margin-bottom: 16px; font-weight: 700;
+    }
+    #info h3 {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: .6;
+      margin: 20px 0 8px; border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: 6px;
+    }
+    #info p { font-size: 15px; line-height: 1.6; opacity: .92; }
+    #info ul { list-style: none; margin-top: 6px; }
+    #info li { font-size: 14.5px; line-height: 1.5; padding: 7px 0 7px 26px; position: relative; }
+    #info li::before { content: "✔"; position: absolute; left: 0; color: var(--accent2); }
+    #info .fact {
+      margin-top: 22px; background: rgba(79,195,247,.1); border: 1px solid rgba(79,195,247,.25);
+      border-radius: 14px; padding: 14px 16px; font-size: 14px; line-height: 1.55;
+    }
+    #info .fact b { color: var(--accent2); }
+
+    /* ---------- Loading ---------- */
+    #loader {
+      position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px; background: #05070f; transition: opacity .6s; font-size: 15px;
+    }
+    #loader.hide { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 54px; height: 54px; border: 4px solid rgba(255,255,255,.12);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 600px) { header p { display:none; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <header>
+    <h1>🧠 Body Explorer</h1>
+    <p>Interactive 3D anatomy — click to explore the human body</p>
+  </header>
+
+  <div id="controls">
+    <div class="btn" id="toggleBtn">💥 <span>Explode</span></div>
+    <div class="btn" id="rotateBtn">🔄 <span>Auto-Rotate</span></div>
+    <div class="btn" id="resetBtn">♻️ <span>Reset View</span></div>
+  </div>
+
+  <div id="hint"><span>👆</span> Click the <b>body</b> to explode it, then click any <b>organ</b> to learn!</div>
+
+  <aside id="info">
+    <div class="close" id="closeInfo">✕</div>
+    <div class="emoji" id="iEmoji">🫀</div>
+    <h2 id="iName">Organ</h2>
+    <span class="tag" id="iTag">System</span>
+    <h3>What it is</h3>
+    <p id="iDesc"></p>
+    <h3>What it does</h3>
+    <ul id="iUses"></ul>
+    <div class="fact"><b>💡 Fun fact:</b> <span id="iFact"></span></div>
+  </aside>
+
+  <div id="loader"><div class="spinner"></div><div>Building the human body…</div></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
